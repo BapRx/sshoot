@@ -6,7 +6,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Set,
 )
 
 from .i18n import _
@@ -28,6 +27,7 @@ class Profile:
     exclude_subnets: Optional[List[str]] = None
     seed_hosts: Optional[List[str]] = None
     extra_opts: Optional[List[str]] = None
+    global_extra_opts: bool = True
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]):
@@ -42,7 +42,7 @@ class Profile:
 
     def update(self, config: Dict[str, Any]):
         """Update the profile from the specified config."""
-        field_names = self._field_names()
+        field_names = self._fields().keys()
         for key, value in config.items():
             attr = key.replace("-", "_")
             if attr not in field_names:
@@ -52,14 +52,17 @@ class Profile:
     def config(self) -> Dict[str, Any]:
         """Return profile configuration as a dict."""
         conf = {}
-        for attr in self._field_names():
+        for attr, default_value in self._fields().items():
             value = getattr(self, attr)
-            if value:
+            if value != default_value:
                 conf[attr.replace("_", "-")] = value
         return dict(conf)
 
     def cmdline(
-        self, executable: str = "sshuttle", extra_opts: Optional[List[str]] = None
+        self,
+        executable: str = "sshuttle",
+        extra_opts: Optional[List[str]] = None,
+        global_extra_opts: Optional[List[str]] = None,
     ) -> List[str]:
         """Return a sshuttle cmdline based on the profile."""
         cmd = [executable] + self.subnets
@@ -80,8 +83,10 @@ class Profile:
             cmd.extend(self.extra_opts)
         if extra_opts:
             cmd.extend(extra_opts)
+        if self.global_extra_opts and global_extra_opts:
+            cmd.extend(global_extra_opts)
         return cmd
 
     @classmethod
-    def _field_names(cls) -> Set[str]:
-        return {field.name for field in dataclasses.fields(cls)}
+    def _fields(cls) -> Dict[str, Any]:
+        return {field.name: field.default for field in dataclasses.fields(cls)}
