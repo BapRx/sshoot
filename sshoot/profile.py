@@ -27,7 +27,6 @@ class Profile:
     exclude_subnets: Optional[List[str]] = None
     seed_hosts: Optional[List[str]] = None
     extra_opts: Optional[List[str]] = None
-    global_extra_opts: bool = True
 
     @classmethod
     def from_config(cls, config: Dict[str, Any]):
@@ -42,11 +41,13 @@ class Profile:
 
     def update(self, config: Dict[str, Any]):
         """Update the profile from the specified config."""
-        field_names = self._fields().keys()
+        field_names = list(self._fields())
         for key, value in config.items():
             attr = key.replace("-", "_")
             if attr not in field_names:
-                raise ProfileError(_("Invalid profile config '{key}'").format(key=key))
+                raise ProfileError(
+                    _("Invalid profile config '{key}'").format(key=key)
+                )
             setattr(self, attr, value)
 
     def config(self) -> Dict[str, Any]:
@@ -62,7 +63,7 @@ class Profile:
         self,
         executable: str = "sshuttle",
         extra_opts: Optional[List[str]] = None,
-        global_extra_opts: Optional[List[str]] = None,
+        global_extra_options: Optional[List[str]] = None,
     ) -> List[str]:
         """Return a sshuttle cmdline based on the profile."""
         cmd = [executable] + self.subnets
@@ -83,8 +84,8 @@ class Profile:
             cmd.extend(self.extra_opts)
         if extra_opts:
             cmd.extend(extra_opts)
-        if self.global_extra_opts and global_extra_opts:
-            cmd.extend(global_extra_opts)
+        if global_extra_options:
+            cmd.extend(global_extra_options)
         return cmd
 
     @classmethod

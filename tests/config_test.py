@@ -4,8 +4,8 @@ from textwrap import dedent
 import pytest
 import yaml
 
-from ..config import yaml_dump
-from ..profile import Profile
+from sshoot.config import yaml_dump
+from sshoot.profile import Profile
 
 
 class TestYamlDump:
@@ -75,10 +75,17 @@ class TestConfig:
 
     def test_load_config_options(self, config, config_file):
         """Only known config options are loaded from config file."""
-        config_data = {"executable": "/usr/bin/shuttle", "other-conf": "no"}
+        config_data = {
+            "executable": "/usr/bin/shuttle",
+            "other-conf": "no",
+            "extra-options": ["--no-latency-control", "--disable-ipv6"],
+        }
         config_file.write_text(yaml.dump(config_data))
         config.load()
-        assert config.config == {"executable": "/usr/bin/shuttle"}
+        assert config.config == {
+            "executable": "/usr/bin/shuttle",
+            "extra-options": ["--no-latency-control", "--disable-ipv6"],
+        }
 
     def test_load_profiles(self, config, profiles_file):
         """The 'profiles' config field is loaded from the config file."""
@@ -88,7 +95,9 @@ class TestConfig:
         }
         profiles_file.write_text(yaml.dump(profiles))
         config.load()
-        expected = {name: Profile(**config) for name, config in profiles.items()}
+        expected = {
+            name: Profile(**config) for name, config in profiles.items()
+        }
         assert config.profiles == expected
 
     def test_save_profiles(self, config, profiles_file):

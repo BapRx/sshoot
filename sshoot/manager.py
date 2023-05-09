@@ -41,8 +41,12 @@ class ManagerProfileError(Exception):
 class Manager:
     """Profile manager."""
 
-    def __init__(self, config_path: Optional[str] = None, rundir: Optional[str] = None):
-        self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+    def __init__(
+        self, config_path: Optional[str] = None, rundir: Optional[str] = None
+    ):
+        self.config_path = (
+            Path(config_path) if config_path else DEFAULT_CONFIG_PATH
+        )
         self.rundir = Path(rundir) if rundir else get_rundir("sshoot")
         self.sessions_path = self.rundir / "sessions"
         self._config = Config(self.config_path)
@@ -70,7 +74,9 @@ class Manager:
         try:
             self._config.remove_profile(name)
         except KeyError:
-            raise ManagerProfileError(_("Unknown profile: {name}").format(name=name))
+            raise ManagerProfileError(
+                _("Unknown profile: {name}").format(name=name)
+            )
 
         self._config.save()
 
@@ -83,14 +89,25 @@ class Manager:
         try:
             return self._config.profiles[name]
         except KeyError:
-            raise ManagerProfileError(_("Unknown profile: {name}").format(name=name))
+            raise ManagerProfileError(
+                _("Unknown profile: {name}").format(name=name)
+            )
 
-    def start_profile(self, name: str, extra_args: Optional[List[str]] = None):
+    def start_profile(
+        self,
+        name: str,
+        extra_args: Optional[List[str]] = None,
+        disable_global_extra_options: bool = False,
+    ):
         """Start profile with given name."""
         if self.is_running(name):
             raise ManagerProfileError(_("Profile is already running"))
 
-        cmdline = self.get_cmdline(name, extra_args=extra_args)
+        cmdline = self.get_cmdline(
+            name,
+            extra_args=extra_args,
+            disable_global_extra_options=disable_global_extra_options,
+        )
         message = _("Profile failed to start: {error}")
         try:
             process = Popen(cmdline, stderr=PIPE)
@@ -119,16 +136,25 @@ class Manager:
         try:
             pid = int(self._get_pidfile(name).read_text())
             kill_and_wait(pid)
-        except (IOError, OSError, PermissionError) as error:
+        except (OSError, PermissionError) as error:
             raise ManagerProfileError(
                 _("Failed to stop profile: {error}").format(error=error)
             )
 
-    def restart_profile(self, name: str, extra_args: Optional[List[str]] = None):
+    def restart_profile(
+        self,
+        name: str,
+        extra_args: Optional[List[str]] = None,
+        disable_global_extra_options: bool = False,
+    ):
         """Restart profile with given name."""
         if self.is_running(name):
             self.stop_profile(name)
-        self.start_profile(name, extra_args=extra_args)
+        self.start_profile(
+            name,
+            extra_args=extra_args,
+            disable_global_extra_options=disable_global_extra_options,
+        )
 
     def is_running(self, name: str) -> bool:
         """Return whether the specified profile is running."""
@@ -149,20 +175,27 @@ class Manager:
         return True
 
     def get_cmdline(
-        self, name: str, extra_args: Optional[List[str]] = None
+        self,
+        name: str,
+        extra_args: Optional[List[str]] = None,
+        disable_global_extra_options: bool = False,
     ) -> List[str]:
         """Return the command line for the specified profile."""
         profile = self.get_profile(name)
 
         executable = self._get_executable()
         extra_opts = ["--daemon", "--pidfile", str(self._get_pidfile(name))]
-        global_extra_opts = self._config.config.get("global_extra_opts", [])
+        global_extra_options = (
+            self._config.config.get("extra-options", [])
+            if not disable_global_extra_options
+            else []
+        )
         if extra_args:
             extra_opts.extend(extra_args)
         return profile.cmdline(
             executable=executable,
             extra_opts=extra_opts,
-            global_extra_opts=global_extra_opts,
+            global_extra_options=global_extra_options,
         )
 
     def _get_pidfile(self, name: str) -> Path:

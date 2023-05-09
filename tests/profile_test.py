@@ -1,6 +1,6 @@
 import pytest
 
-from ..profile import (
+from sshoot.profile import (
     Profile,
     ProfileError,
 )
@@ -82,18 +82,26 @@ class TestProfile:
             "10.10.0.0/16",
         ]
 
+    def test_cmdline_with_global_extra_options(self, profile):
+        """Profile.cmdline() includes global extra options."""
+        profile.cmdline(global_extra_options=["--verbose", "--daemon"]), [
+            "sshuttle",
+            "1.1.1.0/24",
+            "10.10.0.0/16",
+            "--verbose",
+            "--daemon",
+        ]
+
     def test_config(self, profile):
         """Profile.config() returns a dict with the profile config."""
         profile.remote = "1.2.3.4"
         profile.dns = True
         profile.auto_hosts = True
-        profile.global_extra_opts = False
         assert profile.config() == {
             "auto-hosts": True,
             "remote": "1.2.3.4",
             "dns": True,
             "subnets": ["1.1.1.0/24", "10.10.0.0/16"],
-            "global-extra-opts": False,
         }
 
     def test_from_config(self, profile):

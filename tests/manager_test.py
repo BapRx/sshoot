@@ -8,7 +8,7 @@ from textwrap import dedent
 import pytest
 import yaml
 
-from ..manager import (
+from sshoot.manager import (
     DEFAULT_CONFIG_PATH,
     get_rundir,
     kill_and_wait,
@@ -16,10 +16,10 @@ from ..manager import (
     ManagerProfileError,
     ProcessKillFail,
 )
-from ..profile import Profile
+from sshoot.profile import Profile
 
 
-def fake_executable(base_path, exit_code):
+def fake_executable(base_path, exit_code, error_message="stderr message"):
     """Create a fake executable logging command line parameters."""
     executable = Path(base_path) / "executable"
     executable.write_text(
@@ -27,7 +27,7 @@ def fake_executable(base_path, exit_code):
             f"""\
             #!/bin/sh
             echo $@ > {base_path}/cmdline
-            echo -n stderr message >&2
+            echo -n {error_message} >&2
             exit {exit_code}
             """
         )
@@ -47,8 +47,15 @@ def bin_fail(tmpdir):
 
 
 @pytest.fixture
+def bin_fail_silent(tmpdir):
+    yield fake_executable(tmpdir, 1, error_message="")
+
+
+@pytest.fixture
 def profile(profile_manager):
-    yield profile_manager.create_profile("profile", {"subnets": ["10.0.0.0/24"]})
+    yield profile_manager.create_profile(
+        "profile", {"subnets": ["10.0.0.0/24"]}
+    )
 
 
 @pytest.fixture
@@ -66,7 +73,9 @@ class TestManager:
         assert profile_manager.config_path == config_dir
         assert profile_manager.sessions_path == sessions_dir
 
-    def test_load_config_create_dirs(self, profile_manager, config_dir, sessions_dir):
+    def test_load_config_create_dirs(
+        self, profile_manager, config_dir, sessions_dir
+    ):
         """Manager.load_config creates config directories."""
         config_dir.rmdir()
         sessions_dir.rmdir()
@@ -91,7 +100,9 @@ class TestManager:
         """Manager.create_profile raises an error if profile name is in use."""
         profile_manager.create_profile("profile", {"subnets": ["10.0.0.0/24"]})
         with pytest.raises(ManagerProfileError):
-            profile_manager.create_profile("profile", {"subnets": ["10.0.0.0/16"]})
+            profile_manager.create_profile(
+                "profile", {"subnets": ["10.0.0.0/16"]}
+            )
 
     @pytest.mark.parametrize(
         "details,message",
@@ -103,7 +114,9 @@ class TestManager:
             ({"dns": True}, "Profile missing 'subnets' config"),
         ],
     )
-    def test_create_profile_invalid_details(self, profile_manager, details, message):
+    def test_create_profile_invalid_details(
+        self, profile_manager, details, message
+    ):
         """Manager.create_profile raises an error on invalid profile info."""
         with pytest.raises(ManagerProfileError) as error:
             profile_manager.create_profile("profile", details)
@@ -122,8 +135,12 @@ class TestManager:
 
     def test_get_profiles(self, profile_manager):
         """Manager.get_profiles returns defined profiles."""
-        profile_manager.create_profile("profile1", {"subnets": ["10.0.0.0/24"]})
-        profile_manager.create_profile("profile2", {"subnets": ["192.168.0.0/16"]})
+        profile_manager.create_profile(
+            "profile1", {"subnets": ["10.0.0.0/24"]}
+        )
+        profile_manager.create_profile(
+            "profile2", {"subnets": ["192.168.0.0/16"]}
+        )
         assert profile_manager.get_profiles() == {
             "profile1": Profile(["10.0.0.0/24"]),
             "profile2": Profile(["192.168.0.0/16"]),
@@ -141,7 +158,9 @@ class TestManager:
         with pytest.raises(ManagerProfileError):
             profile_manager.get_profile("unknown")
 
-    def test_start_profile(self, profile_manager, profile, sessions_dir, bin_succeed):
+    def test_start_profile(
+        self, profile_manager, profile, sessions_dir, bin_succeed
+    ):
         """Manager.start_profile starts a profile."""
         profile_manager._get_executable = lambda: str(bin_succeed)
 
@@ -157,7 +176,9 @@ class TestManager:
         """Manager.start_profile can add extra arguments to command line."""
         profile_manager._get_executable = lambda: str(bin_succeed)
 
-        profile_manager.start_profile("profile", extra_args=["--extra1", "--extra2"])
+        profile_manager.start_profile(
+            "profile", extra_args=["--extra1", "--extra2"]
+        )
         cmdline = (bin_succeed.parent / "cmdline").read_text()
         assert cmdline == (
             f"10.0.0.0/24 --daemon --pidfile {sessions_dir}/profile.pid --extra1 --extra2\n"
@@ -170,7 +191,21 @@ class TestManager:
             profile_manager.start_profile("profile")
         assert str(err.value) == "Profile failed to start: stderr message"
 
-    def test_start_profile_executable_not_found(self, profile_manager, profile):
+    def test_start_profile_fail_no_error_message(
+        self, profile_manager, profile, bin_fail_silent
+    ):
+        """An error is raised if starting a profile fails and no stdout is reported."""
+        profile_manager._get_executable = lambda: str(bin_fail_silent)
+        with pytest.raises(ManagerProfileError) as err:
+            profile_manager.start_profile("profile")
+        assert (
+            str(err.value)
+            == "Profile failed to start: Please see the log for more details: 'grep sshuttle /var/log/syslog'"
+        )
+
+    def test_start_profile_executable_not_found(
+        self, profile_manager, profile
+    ):
         """Profile start raises an error if executable is not found."""
         profile_manager._get_executable = lambda: "/not/here"
         with pytest.raises(ManagerProfileError):
@@ -206,7 +241,9 @@ class TestManager:
         with pytest.raises(ManagerProfileError):
             profile_manager.stop_profile("profile")
 
-    def test_stop_profile_process_not_found(self, mocker, profile_manager, pid_file):
+    def test_stop_profile_process_not_found(
+        self, mocker, profile_manager, pid_file
+    ):
         """If the process fails to stop an error is raised."""
         pid_file.write_text("100\n")
 
@@ -220,7 +257,13 @@ class TestManager:
         mock_kill_and_wait.assert_called_once_with(100)
 
     def test_restart_profile(
-        self, mocker, profile_manager, pid_file, profile, sessions_dir, bin_succeed
+        self,
+        mocker,
+        profile_manager,
+        pid_file,
+        profile,
+        sessions_dir,
+        bin_succeed,
     ):
         """Manage.restart_profile restarts a running profile."""
         profile_manager._get_executable = lambda: str(bin_succeed)
